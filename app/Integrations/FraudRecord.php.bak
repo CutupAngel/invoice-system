@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class FraudRecord extends FraudIntegration
+{
+    const TITLE = 'FraudRecord';
+    const SHORTNAME = 'fraudrecord';
+    const DESCRIPTION = "FraudRecord - Report and Query Unpleasant Clients, Fraudsters, Scammers, Spammers, Abusers on Fraud Record.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('fraudrecord.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::fraudrecordSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+}

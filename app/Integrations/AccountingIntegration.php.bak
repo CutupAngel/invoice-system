@@ -1,0 +1,8 @@
+<?php
+
+namespace App\Integrations;
+
+abstract class AccountingIntegration extends Integration
+{
+	const TYPETITLE = 'Accounting';
+}

@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Modules\DummyModule\Controllers;
+
+use App\Modules\Controller;
+
+class DummyFile extends Controller
+{
+	public function index()
+	{
+
+	}
+}

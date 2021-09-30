@@ -1,0 +1,43 @@
+h2{
+	color:#0072A4;
+	font-size:16px;
+}
+.tab-pane.active{
+	padding: 10px;
+	border-left: 1px solid rgb(221, 221, 221);
+	border-right: 1px solid rgb(221, 221, 221);
+	border-bottom: 1px solid rgb(221, 221, 221);
+	min-height: 200px;
+}
+.form-control{
+	margin:10px 0;
+}
+.total-sidebar .agree{
+}
+.total-sidebar .agree li{
+	padding:5px 10px;
+	margin:0;
+}
+.savedPayment{
+	margin:0;
+	padding:0;
+	list-style-type:none;
+}
+.savedPayment li{
+	text-align:center;
+	padding:0;
+	margin:10px 20px;
+	display:inline-block;
+}
+.savedPayment li.creditcard{
+	
+}
+.savedPayment li.creditcard img{
+	
+}
+.savedPayment li.creditcard .last4{
+	font-size:12px;
+}
+.savedPayment li.creditcard .expiration{
+	font-size:10px;
+}

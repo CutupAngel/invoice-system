@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class ResellerID extends WebHostingIntegration
+{
+    const TITLE = 'ResellerID';
+    const SHORTNAME = 'resellerid';
+    const DESCRIPTION = "ResellerID is an ICANN accredited registrar that provides Domain Registration Services, management operated under PT ARDH GLOBAL INDONESIA.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('resellerid.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::reslleridSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+}

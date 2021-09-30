@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class NetEarthOneSSL extends SSLIntegration
+{
+    const TITLE = 'NetEarth One';
+    const SHORTNAME = 'netearthonessl';
+    const DESCRIPTION = "Sell Web hosting, domains and much more via our NetEarth One Integration.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('netearthonessl.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::netearthoneSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+}

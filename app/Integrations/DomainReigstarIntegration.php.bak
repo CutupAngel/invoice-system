@@ -1,0 +1,35 @@
+<?php
+
+namespace App\Integrations;
+
+abstract class DomainRegistarIntegration extends Integration
+{
+	const TYPETITLE = 'Domain Name Registrars';
+
+	abstract public function check(string $domain);
+
+	abstract public function register(
+		string $domain,
+		int $years,
+		$lock = true,
+		string $name,
+		string $organization,
+		string $address1,
+		string $address2,
+		string $city,
+		string $state,
+		string $postalcode,
+		string $country,
+		string $email,
+		string $phone,
+		string $fax
+	);
+
+	abstract public static function getSearchForm();
+
+	abstract public static function processSearchForm(\Illuminate\Http\Request $request);
+
+	abstract public static function getRegistrationForm();
+
+	abstract public static function processRegistrationForm(\Illuminate\Http\Request $request);
+}

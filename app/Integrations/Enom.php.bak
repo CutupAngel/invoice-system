@@ -1,0 +1,387 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+use arleslie\Enom\Client as SDK;
+
+class Enom extends DomainRegistarIntegration
+{
+    const TITLE = 'Enom';
+    const SHORTNAME = 'enom';
+    const DESCRIPTION = "eNom, Inc., the #1 Reseller Registrar, ICANN accredited - Domain name registration, Web Site Hosting, Email Services, Club Drop and Web Site Monitor.";
+
+    private $api;
+    private $lastError = '';
+
+    private static $instance;
+
+    public function __construct($userid = false, $password = false, $testmode = false)
+    {
+        if ($userid === false || $password === false || $testmode === false) {
+            $userid = Settings::getAsUser(1, 'enom.userid');
+            $password = Settings::getAsUser(1, 'enom.password');
+            $testmode = Settings::getAsUser(1, 'enom.testmode');
+        }
+
+        $this->api = new SDK(
+            $userid,
+            $password,
+            $testmode
+        );
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::getAsUser(1, 'integration.enom') === '1';
+    }
+
+    public static function toggle()
+    {
+        if (self::checkEnabled()) {
+            Settings::set([
+                'integration.enom' => false
+            ]);
+
+            $settings = Settings::getAsUser(1, 'enom');
+            \App\Package_Cycle::destroy($settings['cycle']);
+            \App\Package::destroy($settings['package']);
+        } else {
+            $enom = new Enom();
+            if ($enom->checkConnection()) {
+                $group = self::__createIntegrationGroup();
+
+                $package = \App\Package::create([
+                    'name' => 'Enom - Domain',
+                    'group_id' => $group->id
+                ]);
+
+                $cycle = $package->cycles()->create([
+                    'price' => 0.00,
+                    'cycle' => 1,
+                ]);
+
+                Settings::set([
+                    'integration.enom' => true,
+                    'enom.package' => $package->id,
+                    'enom.cycle' => $cycle->id
+                ]);
+
+                return 1;
+            } else {
+                return $enom->getError();
+            }
+        }
+
+        return 0;
+    }
+
+    public function getError()
+    {
+        return $this->lastError;
+    }
+
+    public static function getSetupForm()
+    {
+        $tlds = [];
+        try {
+            $pricing = json_decode(Settings::get('enom.pricing', '{}'));
+            $tlds = self::getInstance()->getAvailableTLDS();
+
+            foreach ($tlds as $key => $tld) {
+                $tld = idn_to_utf8($tld);
+                // Enom supports idns (international domains) we need to convert those to the correct utf8 character.
+                $tlds[$tld] = [
+                    'renew' => $pricing->$tld->renew,
+                    'register' => $pricing->$tld->register,
+                    'transfer' => $pricing->$tld->transfer
+                ];
+
+                unset($tlds[$key]);
+            }
+        } catch (\Exception $e) {
+            // The user hasn't saved detials.
+        }
+
+        return view('Integrations::enomSetup', ['tlds' => $tlds]);
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'userid' => 'required',
+            'password' => 'required',
+            'ns1' => 'required',
+            'ns2' => 'required'
+        ]);
+
+        $enom = new Enom(
+            $request->input('userid'),
+            $request->input('password'),
+            $request->has('testmode')
+        );
+
+        if (! $enom->checkConnection()) {
+            return back()->withInput()->withErrors($enom->getError());
+        }
+
+        Settings::set([
+            'enom.userid' => $request->input('userid'),
+            'enom.password' => $request->input('password'),
+            'enom.testmode' => $request->has('testmode'),
+            'enom.ns1' => $request->input('ns1'),
+            'enom.ns2' => $request->input('ns2'),
+            'enom.pricing' => json_encode($request->input('tld', []))
+        ]);
+
+        return back()->with('status', 'API details were validated and have been saved.');
+    }
+
+    public function checkConnection()
+    {
+        try {
+            $this->check('google.com');
+        } catch (\Exception $e) {
+            $this->lastError = 'Unable to communicate with Enom:'. $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+
+    public function check(string $domain)
+    {
+        $domain = explode('.', $domain);
+        $tld = array_pop($domain);
+        $sld = array_pop($domain);
+
+        return $this->api->DomainRegistration()->check($sld, $tld);
+    }
+
+    public function register(
+        string $domain,
+        int $years,
+        $lock = true,
+        string $name,
+        string $organization,
+        string $address1,
+        string $address2,
+        string $city,
+        string $state,
+        string $postalcode,
+        string $country,
+        string $email,
+        string $phone,
+        string $fax
+    )
+    {
+        $domain = explode('.', $domain);
+        $tld = array_pop($domain);
+        $sld = array_pop($domain);
+
+        $firstname = explode(' ', $name);
+        $lastname = array_pop($firstname);
+
+        return $this->api->DomainRegistration()->Purchase(
+            $sld,
+            $tld,
+            implode(' ', $firstname),
+            $lastname,
+            '',
+            '',
+            $address1,
+            $address2,
+            $city,
+            $state,
+            $postalcode,
+            $country,
+            $email,
+            '+1.' . $phone,
+            $fax,
+            $years,
+            $lock,
+            false
+        );
+    }
+
+    public static function getInstance()
+    {
+        if (!isset(self::$instance)) {
+            self::$instance = new Enom();
+        }
+
+        return self::$instance;
+    }
+
+    public static function getSearchForm()
+    {
+
+    }
+
+    public static function processSearchForm(\Illuminate\Http\Request $request)
+    {
+
+    }
+
+    public static function getRegistrationForm()
+    {
+        return ['Integrations::domainRegistrationForm', [
+            'tlds' => self::getInstance()->getAvailableTLDS()
+        ]];
+    }
+
+    public static function processRegistrationForm(\Illuminate\Http\Request $request)
+    {
+        $prices = json_decode(Settings::getAsUser(1, 'enom.pricing', '{}'));
+
+        switch ($request->input('domain.option')) {
+            case 'register':
+                $validation = \Validator::make($request->toArray(), [
+                    'domain.sld' => 'required',
+                    'domain.tld' => 'required'
+                ]);
+
+                if ($validation->failed()) {
+                    return back()->withInput()->withErrors($validation->messages());
+                }
+
+                $sld = $request->input('domain.sld');
+                $tld = $request->input('domain.tld');
+                $check = self::getInstance()->check("{$sld}.{$tld}");
+
+                switch ($check->RRPCode) {
+                    case '210':
+                        session()->put('integration.domain', "{$sld}.{$tld}");
+                        session()->put('cart.products.domain', [
+                            'domain' => "{$sld}.{$tld}",
+                            'price' => $prices->$tld->register,
+                            'package' => Settings::getAsUser(1, 'enom.package'),
+                            'cycle' => Settings::getAsUser(1, 'enom.cycle')
+                        ]);
+
+                        return true;
+                        break;
+                    case '211':
+                    default:
+                        return back()->withInput()->withErrors("{$sld}.{$tld} has already been registered");
+                        break;
+                }
+                break;
+            case 'transfer':
+                $validation = \Validator::make($request->toArray(), [
+                    'domain.sld' => 'required',
+                    'domain.tld' => 'required'
+                ]);
+
+                if ($validation->failed()) {
+                    return back()->withInput()->withErrors($validation->messages());
+                }
+
+                $sld = $request->input('domain.sld');
+                $tld = $request->input('domain.tld');
+                $check = self::getInstance()->check("{$sld}.{$tld}");
+
+                switch ($check->RRPCode) {
+                    case '211':
+                        session()->put('integration.domain', "{$sld}.{$tld}");
+                        session()->put('cart.domain', [
+                            'domain' => "{$sld}.{$tld}",
+                            'price' => $prices->$tld->register
+                        ]);
+
+                        return true;
+                        break;
+                    case '210':
+                    default:
+                        return back()->withInput()->withErrors("{$sld}.{$tld} has not been registered.");
+                        break;
+                }
+
+                break;
+            case 'own':
+            default:
+                $validation = \Validator::make($request->toArray(), [
+                    'domain.domain' => 'required'
+                ]);
+
+                if ($validation->failed()) {
+                    return back()->withInput()->withErrors($validation->messages());
+                }
+
+
+                session()->put('integration.domain', $request->input('domain.domain'));
+                break;
+        }
+
+        return true;
+    }
+
+    public static function completeOrder(\App\Order $order)
+    {
+        $domain = session()->get('cart.domain.domain');
+
+        $order->settings()->create([
+            'setting_name' => 'domain',
+            'setting_value' => $domain
+        ]);
+
+        self::processCommand('register', $order);
+    }
+
+    public static function processCommand(string $command, \App\Order $order)
+    {
+        switch ($command) {
+            case 'register':
+                $customer = $order->customer;
+                $address = $customer->billingContact->last()->address;
+
+                $domain = $order->settings->where('setting_name', 'domain')->first()->setting_value;
+                $success = self::getInstance()->register(
+                    $domain,
+                    1,
+                    true,
+                    $customer->name,
+                    $address->business_name,
+                    $address->address_1,
+                    $address->address_2,
+                    $address->city,
+                    $address->county->name,
+                    $address->postal_code,
+                    $address->country->name,
+                    $customer->email,
+                    $address->phone,
+                    $address->fax
+                );
+
+                if ($success) {
+                    $order->status = $order::SETUP;
+                    $order->save();
+                }
+                break;
+        }
+    }
+
+    public function getAvailableTLDS()
+    {
+        $tlds = [];
+        foreach ($this->api->DomainRegistration()->getTLDList()->tldlist->tld as $tld) {
+            if (empty((string) $tld->tld)) {
+                continue;
+            }
+
+            $tlds[] = idn_to_utf8((string) $tld->tld);
+        }
+
+        return $tlds;
+    }
+}

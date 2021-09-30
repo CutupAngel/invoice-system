@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class SageLine50 extends AccountingIntegration
+{
+    const TITLE = 'Sage Line 50';
+    const SHORTNAME = 'sageline50';
+    const DESCRIPTION = "Take control with Sage 50 Accounts. Manage cash flow and stay in control of your finances whether you're in the office or on the go.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('sageline50.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view(Integrations::sageline50Setup);
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+}

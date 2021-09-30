@@ -1,0 +1,5 @@
+<?php
+
+Route::group(['module' => 'DummyModule', 'prefix' => 'DummyPrefix'], function () {
+	Route::get('/', 'DummyName@index');
+});

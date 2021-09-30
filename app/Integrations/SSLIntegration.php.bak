@@ -1,0 +1,8 @@
+<?php
+
+namespace App\Integrations;
+
+abstract class SSLIntegration extends Integration
+{
+	const TYPETITLE = 'SSL Certificates';
+}

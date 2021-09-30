@@ -1,0 +1,112 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+use ProxmoxVE\Proxmox as SDK;
+
+class Proxmox extends CloudIntegration
+{
+    const TITLE = 'Proxmox';
+    const SHORTNAME = 'proxmox';
+    const DESCRIPTION = "Proxmox provides an open source server virtualization management solution supporting both KVM and container-virtualization.";
+
+    private $api;
+    private $lastError = '';
+    private $connected = false;
+
+    public function __construct($hostname = false, $username = false, $password = false, $realm = 'pve', $port = 9009)
+    {
+
+        if ($hostname === false || $username === false || $password === false) {
+            $hostname = Settings::get('proxmox.hostname');
+            $username = Settings::get('proxmox.username');
+            $password = Settings::get('proxmox.password');
+            $realm = Settings::get('proxmox.realm');
+            $port = Settings::get('proxmox.port');
+        }
+
+        try {
+            $this->api = new SDK([
+                'hostname' => $hostname,
+                'username' => $username,
+                'password' => $password,
+                'realm'    => $realm,
+                'port'     => $port
+            ]);
+
+            $this->connected = true;
+        } catch (\Exception $e) {
+            $this->lastError = $e->getMessage();
+        }
+
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('proxmox.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        return $this->lastError();
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::proxmoxSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'hostname' => 'required',
+            'port'     => 'numeric',
+            'username' => 'required',
+            'password' => 'required'
+        ]);
+
+
+        $proxmox = new Proxmox(
+            $request->input('hostname'),
+            $request->input('username'),
+            $request->input('password'),
+            $request->input('realm'),
+            $request->input('port')
+        );
+
+        if (! $proxmox->checkConnection()) {
+            return back()->withInput()->withErrors($proxmox->getError());
+        }
+
+        Settings::set([
+            'proxmox.hostname' => $request->input('hostname'),
+            'proxmox.username' => $request->input('username'),
+            'proxmox.password' => $request->input('password'),
+            'proxmox.realm'   => $request->input('realm'),
+            'proxmox.port'   => $request->input('port')
+        ]);
+
+        return back()->with('status', 'Connection details were validated and have been saved.');
+    }
+
+    public function checkConnection()
+    {
+        return $this->connected;
+    }
+}

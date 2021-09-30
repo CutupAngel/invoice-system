@@ -1,0 +1,8 @@
+sftp-config.json
+vendor
+node_modules
+public/components
+.env
+storage/pdf
+.idea
+composer.lock

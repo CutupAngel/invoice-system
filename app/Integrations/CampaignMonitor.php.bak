@@ -1,0 +1,114 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+use CS_REST_Transactional_SmartEmail as SDK;
+
+class CampaignMonitor extends EmailIntegration
+{
+    const TITLE = 'Campaign Monitor';
+    const SHORTNAME = 'campaignmonitor';
+    const DESCRIPTION = "Campaign Monitor makes it easy for you to create, send, and optimize your email marketing campaigns.";
+
+    private $api;
+    private $lastError;
+
+    public function __construct($api_key = false, $client = false)
+    {
+        if ($apikey === false || $client === false) {
+            $apikey = Settings::get('campaignmonitor.apikey');
+            $client = Settings::get('campaignmonitor.clientid');
+        }
+
+        $this->api = new SDK(
+            '',
+            ['api_key' => $apikey]
+        );
+
+        $this->api->set_client($client);
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('campaignmonitor.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        return $this->lastError();
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::campaignmonitorSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'api' => 'required',
+            'client' => 'required'
+        ], [
+            'api.required' => 'A valid API Key is required.',
+            'client.required' => 'A valid Client ID is required.'
+        ]);
+
+        $campaignmonitor = new CampaignMonitor($request->input('api'), $request->input('client'));
+        if (! $campaignmonitor->checkConnection()) {
+            return back()->withInput()->withErrors($campaignmonitor->getError());
+        }
+
+        Settings::set([
+            'campaignmonitor.apikey'   => $request->input('api'),
+            'campaignmonitor.clientid' => $request->input('client')
+        ]);
+
+        return back()->with('status', 'API details were validated and have been saved.');
+    }
+
+    public function checkConnection()
+    {
+        $apiTest = $this->get_list(['status' => 'all']);
+
+        // Because if there isn't an error there won't be a code. (This API is horrible.)
+        if (!empty($apiTest->reponse)) {
+            switch ($apiTest->response->Code) {
+                case 102:
+                    $this->lastError = 'A valid Client ID is required.';
+                    return false;
+                    break;
+                case 50:
+                    $this->lastError = 'A valid API Key is required.';
+                    return false;
+                    break;
+                default:
+                    break;
+            }
+
+
+        }
+
+        if ($apiTest->http_status_code !== 200) {
+            $this->lastError = 'An unknown error has occurred.';
+            return false;
+        }
+
+        return true;
+    }
+}

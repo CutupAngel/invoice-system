@@ -1,0 +1,588 @@
+<?php
+
+namespace App\Integrations;
+
+use App\Jobs\ControlPanelIntegrationJob;
+use App\Order;
+use App\Packages\APIs\Plesk as SDK;
+use Settings;
+
+class Plesk extends ControlPanelIntegration
+{
+    const TITLE = 'Plesk';
+    const SHORTNAME = 'plesk';
+    const DESCRIPTION = "Plesk is the most effective, flexible and secure web control panel for professional hosting providers and webmasters to meet the broadest range of customers.";
+
+    // Statuses
+    const ERRORED = -1;
+    const PENDING = 0;
+    const CREATED = 1;
+    const SUSPENDED = 2;
+    const TERMINATED = 3;
+
+    private static $statuses = [
+        self::ERRORED => 'Errored',
+        self::PENDING => 'Pending',
+        self::CREATED => 'Created',
+        self::SUSPENDED => 'Suspended',
+        self::TERMINATED => 'Terminated'
+    ];
+
+    private $api;
+    private $lastError = '';
+    private $sharedIP;
+
+    public function __construct($host = false, $user = false, $password = false)
+    {
+        if ($host === false || $user === false || $password === false) {
+            $host = Settings::get('plesk.hostname');
+            $user = Settings::get('plesk.username');
+            $password = Settings::get('plesk.password');
+            $this->setSharedIP(Settings::get('plesk.shared'));
+        }
+
+        $this->api = new SDK($host);
+        $this->api->setCredentials($user, $password);
+    }
+
+	/**
+	 * Set the order variable
+	 * @param AppOrder $order The current order being process
+	 */
+	public function setOrder(\App\Order $order)
+    {
+
+    }
+
+    public function setSharedIP($ip)
+    {
+        $this->sharedIP = $ip;
+    }
+
+    public function getSharedIP()
+    {
+        if ($this->sharedIP === null) {
+            throw new \Exception('Shared IP not set.');
+        }
+
+        return $this->sharedIP;
+    }
+
+    /**
+     * Retriving the form to use on the package create/edit page.
+     * @param \Illuminate\Http\Request $request This is passed by App\Modules\Orders\Controllers\Client@getPackage
+     * @return view()
+     */
+    public static function getPackageForm(\Illuminate\Http\Request $request)
+    {
+        $selectedPackage = '';
+        if ($request->has('package')) {
+            $package = \App\Package::find($request->input('package'));
+            $selectedPackage = $package->settings->where('name', 'plesk.package')->first()->value;
+        }
+
+        $plesk = new Plesk();
+
+        return view('Integrations::pleskPackageForm', [
+            'packages' => $plesk->getPackages(),
+            'selected' => $selectedPackage
+        ]);
+    }
+
+    /**
+     * Save information from the package form.
+     * @param \Illuminate\Http\Request $request This is passed by App\Modules\Orders\Controllers\Client@savePackage
+     * @param \App\Package $package This is the package model.
+     * @return null
+     */
+    public static function savePackageDetails(\Illuminate\Http\Request $request, \App\Package $package)
+    {
+        \Validator::make($request->toArray(), ['plesk.package' => 'required']);
+
+		$setting = $package->settings->where('name', 'plesk.package');
+		if ($setting->count() !== 0) {
+			$setting = $setting->first();
+			$setting->value = $request->input('plesk.package');
+			$setting->save();
+		} else {
+			$package->settings()->create([
+				'name' => 'plesk.package',
+				'value' => $request->input('plesk.package')
+			]);
+		}
+    }
+
+    /**
+     * Retriving the form to use on the order page.
+     * @return view()
+     */
+    public static function getOrderForm(\App\Package $package)
+    {
+        return view('Integrations::pleskOrderForm');
+    }
+
+    /**
+     * Save the information from the order form.
+     * @param \Illuminate\Http\Request $request This is passed by App\Modules\Common\Controllers\Main@postAddToCart
+     * @return null
+     */
+    public static function saveOrderForm(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'plesk.domain' => 'required'
+        ]);
+
+        session()->put('cart.plesk', $request->input('plesk'));
+    }
+
+    /**
+     * Complete the order and perfrom the next action (i.e. create account)
+     * @param \App\Order $order
+     * @return null
+     */
+    public static function completeOrder(\App\Order $order)
+    {
+        $details = session()->get('cart.plesk');
+        $pleskPackage = $order->package->settings->where('name', 'plesk.package')->first()->value;
+
+        $username = substr($details['domain'], 0, 8);
+        $password = str_random(13);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.username',
+            'setting_value' => $username
+        ]);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.password',
+            'setting_value' => $password
+        ]);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.domain',
+            'setting_value' => $details['domain']
+        ]);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.package',
+            'setting_value' => $pleskPackage
+        ]);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.error',
+            'setting_value' => ''
+        ]);
+
+        $order->settings()->create([
+            'setting_name' => 'plesk.status',
+            'setting_value' => self::PENDING
+        ]);
+
+        self::processCommand('create', $order);
+    }
+
+	/**
+	 * Get the view file for viewing the order from the customer in the admin panel.
+	 * The view *must* extend Orders::viewOrder
+	 *
+	 * @param  AppOrder $order The current order being viewed.
+	 * @return view()
+	 */
+	public static function getOrderView(\App\Order $order)
+    {
+        $plesk = $order->settings->pluck('setting_value', 'setting_name')->all();
+        $plesk['plesk.statusText'] = self::$statuses[$plesk['plesk.status']];
+
+        return view('Integrations::pleskOrderView', ['settings' => $plesk]);
+    }
+
+    public static function processCommand(string $command, \App\Order $order)
+    {
+        switch ($command)
+        {
+            case 'create':
+                self::setStatus($order, self::PENDING);
+                dispatch(new ControlPanelIntegrationJob($order->id, 'createacct'));
+                break;
+            case 'suspend':
+                dispatch(new ControlPanelIntegrationJob($order->id, 'suspend'));
+                break;
+            case 'unsuspend':
+                dispatch(new ControlPanelIntegrationJob($order->id, 'unsuspend'));
+                break;
+            case 'terminate':
+                dispatch(new ControlPanelIntegrationJob($order->id, 'terminate'));
+                break;
+            default:
+                return 0;
+        }
+
+        return 1;
+    }
+
+	/**
+	 * The job queue calls this command with the action assigned to it.
+	 *
+	 * @param  string   $command Action assigned to the job.
+	 * @param  AppOrder $order   Order the action is for.
+	 * @return boolean (true to remove)
+	 */
+	public static function queueHandler(string $command, \App\Order $order)
+    {
+        // Get the settings for the Plesk Account.
+        $orderSettings = $order->settings->pluck('setting_value', 'setting_name');
+
+        $username = $orderSettings['plesk.username'];
+        $password = $orderSettings['plesk.password'];
+        $domain = $orderSettings['plesk.domain'];
+        $package = $orderSettings['plesk.package'];
+
+        // Get the Plesk server settings
+        $pleskSettings = Settings::getAsUser($order->user, 'plesk');
+
+        $plesk = new Plesk(
+            $pleskSettings['hostname'],
+            $pleskSettings['username'],
+            $pleskSettings['password']
+        );
+
+        $plesk->setSharedIP($pleskSettings['shared']);
+        $plesk->setOrder($order);
+
+        switch ($command)
+        {
+            case 'createacct':
+                $success = $plesk->create(
+                    $username,
+                    $password,
+                    $order->customer->email,
+                    $domain,
+                    $package,
+                    $plesk->getSharedIP()
+                );
+
+                if ($success) {
+                    $order->status = Order::SETUP;
+                    self::setStatus($order, self::CREATED);
+                } else {
+                    $order->status = Order::PENDING;
+                    self::setStatus($order, self::ERRORED, $plesk->getError());
+                }
+
+                $order->save();
+                break;
+            case 'suspend':
+                $success = $plesk->suspend($username);
+
+                if ($success) {
+                    $order->status = Order::SUSPENDED;
+                    self::setStatus($order, self::SUSPENDED);
+                } else {
+                    self::setStatus($order, false, $plesk->getError());
+                }
+
+                $order->save();
+                break;
+            case 'unsuspend':
+                $success = $plesk->unsuspend($username);
+
+                if ($success) {
+                    $order->status = Order::SETUP;
+                    self::setStatus($order, self::CREATED);
+                } else {
+                    self::setStatus($order, self::SUSPENDED, $plesk->getError());
+                }
+
+                $order->save();
+                break;
+            case 'terminate':
+                $success = $plesk->terminate($username);
+
+                if ($success) {
+                    $order->status = Order::TERMINATED;
+                    self::setStatus($order, self::TERMINATED);
+                } else {
+                    self::setStatus($order, false, $plesk->getError());
+                }
+
+                $order->save();
+                break;
+            default:
+                throw new \Exception('Unknown command');
+        }
+
+        // return true to delete the job from the job queue.
+        return true;
+    }
+
+    public function create($username, $password, $email, $domain, $package, $ip, $notify = false)
+    {
+        try {
+            $customer = $this->api->request(
+                "<packet>
+                    <customer>
+                        <add>
+                            <gen_info>
+                                <pname>{$domain}</pname>
+                                <login>{$username}</login>
+                                <passwd>{$password}</passwd>
+                                <email>{$email}</email>
+                            </gen_info>
+                        </add>
+                    </customer>
+                </packet>"
+            );
+
+            $this->api->request(
+                "<packet>
+                    <webspace>
+                        <add>
+                            <gen_setup>
+                                <name>{$domain}</name>
+                                <ip_address>{$ip}</ip_address>
+                                <owner-id>{$customer->id}</owner-id>
+                            </gen_setup>
+                            <plan-name>{$package}</plan-name>
+                        </add>
+                    </webspace>
+                </packet>"
+            );
+        } catch (\PleskX\Api\Exception $e) {
+            $this->lastError = $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+
+    public function resetPassword($username, $password)
+    {
+        // TODO: Implement resetPassword() method.
+    }
+
+    public function suspend($username, $reason = '')
+    {
+        try {
+            $this->api->request(
+                "<packet>
+                    <customer>
+                        <set>
+                            <filter>
+                                <login>{$username}</login>
+                            </filter>
+                            <values>
+                                <gen_info>
+                                    <status>16</status>
+                                </gen_info>
+                            </values>
+                        </set>
+                    </customer>
+                </packet>"
+            );
+        } catch (\PleskX\Api\Exception $e) {
+            $this->lastError = $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+
+    public function unsuspend($username)
+    {
+        try {
+            $this->api->request(
+                "<packet>
+                    <customer>
+                        <set>
+                            <filter>
+                                <login>{$username}</login>
+                            </filter>
+                            <values>
+                                <gen_info>
+                                    <status>0</status>
+                                </gen_info>
+                            </values>
+                        </set>
+                    </customer>
+                </packet>"
+            );
+        } catch (\PleskX\Api\Exception $e) {
+            $this->lastError = $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+
+    public function terminate($username)
+    {
+        try {
+            $this->api->request(
+                "<packet>
+                    <customer>
+                        <del>
+                            <filter>
+                                <login>{$username}</login>
+                            </filter>
+                        </del>
+                    </customer>
+                </packet>"
+            );
+        } catch (\PleskX\Api\Exception $e) {
+            $this->lastError = $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('integration.plesk') === '1' ? true : false;
+    }
+
+    public static function toggle()
+    {
+        if (self::checkEnabled()) {
+            Settings::set([
+                'integration.plesk' => false
+            ]);
+        } else {
+            $plesk = new plesk();
+            if ($plesk->checkConnection()) {
+                Settings::set([
+                    'integration.plesk' => true
+                ]);
+
+                return 1;
+            } else {
+                return $plesk->getError();
+            }
+        }
+
+        return 0;
+    }
+
+    public function getError()
+    {
+        return $this->lastError;
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::pleskSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'hostname'  => 'required',
+            'username'  => 'required',
+            'password'  => 'required',
+            'shared'    => 'required|ip'
+        ], [
+            'shared.ip' => 'Invalid Shared IP Address provided.'
+        ]);
+
+        $plesk = new Plesk($request->input('hostname'), $request->input('username'), $request->input('password'));
+        $plesk->setSharedIP($request->input('shared'));
+
+        if (! $plesk->checkConnection()) {
+            return back()->withInput()->withErrors($plesk->getError());
+        }
+
+        Settings::set([
+            'plesk.hostname' => $request->input('hostname'),
+            'plesk.username' => $request->input('username'),
+            'plesk.password' => $request->input('password'),
+            'plesk.shared'   => $request->input('shared'),
+        ]);
+
+        return back()->with('status', 'Connection details were validated and have been saved.');
+    }
+
+    private function checkConnection()
+    {
+
+        $sharedIP = $this->getSharedIP();
+
+        try {
+            $ipCheck = false;
+            foreach ($this->api->Ip()->get() as $ip) {
+                if ($ip->ipAddress === $sharedIP && $ip->type === 'shared') {
+                    $ipCheck = true;
+                    break;
+                }
+            }
+
+            if (!$ipCheck) {
+                $this->lastError = 'Invalid Shared IP Address provided.';
+                return false;
+            }
+        } catch (\Exception $e) {
+            switch ($e->getCode()) {
+                case 7:
+                case 28:
+                    $this->lastError = "Unable to connect to Plesk, please check the hostname.";
+                    break;
+                default:
+                    $this->lastError = $e->getMessage();
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    public function getPackages()
+    {
+        $xmlpackages = $this->api->request(
+            "<packet>
+                <service-plan>
+                    <get>
+                        <filter/>
+                    </get>
+                </service-plan>
+            </packet>",
+            SDK::RESPONSE_FULL
+        )->xpath('//result');
+
+        $packages = [];
+        foreach ($xmlpackages as $package) {
+            if ($package->id == '1') {
+                continue;
+            }
+
+            $packages[] = $package->name;
+        }
+
+        return $packages;
+    }
+
+    private static function setStatus(\App\Order $order, $status, $error = '')
+    {
+        $updates = [
+            'status' => $order->settings()->where('setting_name', 'plesk.status')->firstOrFail(),
+            'error' => $order->settings()->where('setting_name', 'plesk.error')->firstOrFail()
+        ];
+
+        if (is_int($status)) {
+            $updates['status']->setting_value = $status;
+        }
+
+        $updates['error']->setting_value = $error;
+
+        $order->settings()->saveMany($updates);
+    }
+}

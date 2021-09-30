@@ -1,0 +1,47 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class VPSNET extends CloudIntegration
+{
+    const TITLE = 'VPS.NET';
+    const SHORTNAME = 'vpsnet';
+    const DESCRIPTION = "Cloud Virtual Private Servers VPS server hosting with Truly Flexible Cloud Servers, allowing you to completely customize your hosting environment.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('vpsnet.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::vpsnetSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+}

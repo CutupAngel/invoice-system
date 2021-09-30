@@ -1,0 +1,92 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class NetEarthOneDNS extends DomainRegistarIntegration
+{
+    const TITLE = 'NetEarth One';
+    const SHORTNAME = 'netearthonedns';
+    const DESCRIPTION = "Sell Web hosting, domains and much more via our NetEarth One Integration.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('netearthonedns.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::netearthoneSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+
+    public function check(string $domain)
+    {
+
+    }
+
+    public function register(
+        string $domain,
+        int $years,
+        $lock = true,
+        string $name,
+        string $organization,
+        string $address1,
+        string $address2,
+        string $city,
+        string $state,
+        string $postalcode,
+        string $country,
+        string $email,
+        string $phone,
+        string $fax
+    )
+    {
+
+    }
+
+    public static function getSearchForm()
+    {
+
+    }
+
+    public static function processSearchForm(\Illuminate\Http\Request $request)
+    {
+
+    }
+
+    public static function getRegistrationForm()
+    {
+
+    }
+
+    public static function processRegistrationForm(\Illuminate\Http\Request $request)
+    {
+
+    }
+}

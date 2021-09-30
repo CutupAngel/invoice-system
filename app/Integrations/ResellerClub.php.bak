@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+use arleslie\ResellerClub\ResellerClub as SDK;
+
+class ResellerClub extends WebHostingIntegration
+{
+    const TITLE = 'ResellerClub';
+    const SHORTNAME = 'resellerclub';
+    const DESCRIPTION = "Sell Domain names & Web Hosting on UK servers - Get Great Prices with 24/7 support.";
+
+    private $api;
+    private $lastError = '';
+
+    public function __construct($userid = false, $apikey = false, $testmode = false)
+    {
+        if ($userid === false || $apikey === false || $testmode === false) {
+            $userid = Settings::get('resellerclub.userid');
+            $apikey = Settings::get('resellerclub.apikey');
+            $testmode = Settings::get('resellerclub.testmode');
+        }
+
+        $this->api = new SDK(
+            $userid,
+            $apikey,
+            $testmode
+        );
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('resellerclub.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        return $this->lastError;
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::resellerclubSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'userid' => 'required|numeric',
+            'apikey' => 'required',
+            'ns1' => 'required',
+            'ns2' => 'required'
+        ]);
+
+        $resellerClub = new ResellerClub(
+            $request->input('userid'),
+            $request->input('apikey'),
+            $request->has('testmode')
+        );
+
+        if (! $resellerclub->checkConnection()) {
+            return back()->withInput()->withErrors([$resellerClub->getError()]);
+        }
+
+        Settings::set([
+            'resellerclub.userid' => $request->input('userid'),
+            'resellerclub.apikey' => $request->input('apikey'),
+            'resellerclub.testmode' => $request->has('testmode'),
+            'resellerclub.ns1' => $request->input('ns1'),
+            'resellerclub.ns2' => $request->input('ns2')
+        ]);
+
+        return back()->with('status', 'API details were validated and have been saved.');
+    }
+
+    public function checkConnection()
+    {
+        try {
+            $this->api->domains()->available(['google']);
+        } catch (\Exception $e) {
+            switch ($e->getCode()) {
+                case 500:
+                    $this->lastError = 'Invalid User ID or API Key.';
+                    break;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+}

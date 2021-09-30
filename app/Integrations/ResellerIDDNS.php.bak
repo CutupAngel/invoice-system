@@ -1,0 +1,92 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+
+class ResellerIDDNS extends DomainRegistarIntegration
+{
+    const TITLE = 'ResellerID';
+    const SHORTNAME = 'reselleriddns';
+    const DESCRIPTION = "ResellerID is an ICANN accredited registrar that provides Domain Registration Services, management operated under PT ARDH GLOBAL INDONESIA.";
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('reselleriddns.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        // TODO: Implement getError() method.
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::reselleridSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        // TODO: Implement setup() method.
+    }
+
+    public function check(string $domain)
+    {
+
+    }
+
+    public function register(
+        string $domain,
+        int $years,
+        $lock = true,
+        string $name,
+        string $organization,
+        string $address1,
+        string $address2,
+        string $city,
+        string $state,
+        string $postalcode,
+        string $country,
+        string $email,
+        string $phone,
+        string $fax
+    )
+    {
+
+    }
+
+    public static function getSearchForm()
+    {
+
+    }
+
+    public static function processSearchForm(\Illuminate\Http\Request $request)
+    {
+
+    }
+
+    public static function getRegistrationForm()
+    {
+
+    }
+
+    public static function processRegistrationForm(\Illuminate\Http\Request $request)
+    {
+
+    }
+}

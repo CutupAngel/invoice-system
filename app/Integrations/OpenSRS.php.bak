@@ -1,0 +1,109 @@
+<?php
+
+namespace App\Integrations;
+
+use Settings;
+use arleslie\OpenSRS\OpenSRS as SDK;
+
+class OpenSRS extends CloudIntegration
+{
+    const TITLE = 'OpenSRS';
+    const SHORTNAME = 'opensrs';
+    const DESCRIPTION = "OpenSRS is a Tucows company. Join the go-to platform for resellers of Domain Names, Hosted Email, SSL Certificates and Security and Privacy Products.";
+
+    private $api;
+    private $lastError = '';
+
+    public function __construct($username = false, $apikey = false, $testmode = false)
+    {
+        if ($username === false || $apikey === false || $testmode === false) {
+            $username = Settings::get('opensrs.username');
+            $apikey = Settings::get('opensrs.apikey');
+            $testmode = Settings::get('opensrs.testmode');
+        }
+
+        $this->api = new SDK(
+            $username,
+            $apikey,
+            $testmode
+        );
+    }
+
+    public static function getInfo()
+    {
+        return [
+            'title' => self::TITLE,
+            'shortname' => self::SHORTNAME,
+            'description' => self::DESCRIPTION,
+            'status' => self::checkEnabled()
+        ];
+    }
+
+    public static function checkEnabled()
+    {
+        return Settings::get('opensrs.enabled');
+    }
+
+    public static function toggle()
+    {
+        return false;
+    }
+
+    public function getError()
+    {
+        return $this->lastError;
+    }
+
+    public static function getSetupForm()
+    {
+        return view('Integrations::opensrsSetup');
+    }
+
+    public static function setup(\Illuminate\Http\Request $request)
+    {
+        \Validator::make($request->toArray(), [
+            'username' => 'required',
+            'apikey' => 'required',
+            'ns1' => 'required',
+            'ns2' => 'required'
+        ]);
+
+        $opensrs = new OpenSRS(
+            $request->input('username'),
+            $request->input('apikey'),
+            $request->has('testmode')
+        );
+
+        if (! $opensrs->checkConnection()) {
+            return back()->withInput()->withError($opensrs->getError());
+        }
+
+        Settings::set([
+            'opensrs.username' => $request->input('username'),
+            'opensrs.apikey' => $request->input('apikey'),
+            'opensrs.testmode' => $request->has('testmode'),
+            'opensrs.ns1' => $request->input('ns1'),
+            'opensrs.ns2' => $request->input('ns2')
+        ]);
+
+        return back()->with('status', 'API details were validated and have been saved.');
+    }
+
+    public function checkConnection()
+    {
+        try {
+            $this->api->Domain()->lookup('google.com');
+        } catch (\arleslie\OpenSRS\ConnectionException $e) {
+            $this->lastError = 'Unable to communicate with OpenSRS: '. $e->getRecommendation();
+            return false;
+        } catch (\arleslie\OpenSRS\AuthenicationException $e) {
+            $this->lastError = 'Unable to communicate with OpenSRS: '. $e->getMessage();
+            return false;
+        } catch (\Exception $e) {
+            $this->lastError = 'Unable to communicate with OpenSRS: '. $e->getMessage();
+            return false;
+        }
+
+        return true;
+    }
+}
