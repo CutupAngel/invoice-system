@@ -14,6 +14,6 @@ Releasing Soon!
 
 ### With thanks to these great guys!
 
-#### Erik Jacobson
-#### Jordan Smith
-#### Kulbij Vyacheslav
+#### Vlad Shedrin
+#### Mykola kulpa
+#### Alexander George
