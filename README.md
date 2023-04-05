@@ -7,13 +7,3 @@
 
 ### Version
 ### 2.1
-
-Releasing Soon!
-
-## Development Team
-
-### With thanks to these great guys!
-
-#### Vlad Shedrin
-#### Mykola kulpa
-#### Alexander George
